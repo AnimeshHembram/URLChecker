@@ -97,11 +97,19 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return self._send(404)
 
 
+class _QuietServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # Clients in these tests disconnect on purpose (the checker never reads
+        # bodies), which Windows reports as a reset. That is expected; stay quiet.
+        pass
+
+
 @pytest.fixture(scope="session")
 def local_server():
     """A threaded HTTP server on 127.0.0.1 for real-socket behaviour tests."""
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-    server.daemon_threads = True
+    server = _QuietServer(("127.0.0.1", 0), _Handler)
     server.state = {"big_sent": None, "big_done": threading.Event()}
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

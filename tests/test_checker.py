@@ -191,10 +191,12 @@ def test_unexpected_exception_is_contained():
 
 def test_real_connection_refused(local_server):
     # Bind and close a socket to get a loopback port with nothing listening.
+    # Windows retries a refused connection for about 2 seconds before giving
+    # up, so the timeout must be comfortably longer than that.
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    result = check_url(f"http://127.0.0.1:{port}/", timeout=2)
+    result = check_url(f"http://127.0.0.1:{port}/", timeout=10)
     assert result.outcome == "ERROR"
     assert result.error == "Connection failed"
 
