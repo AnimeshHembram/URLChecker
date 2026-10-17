@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
 ## [0.1.0] - 2026-10-17
 
 First public release.
@@ -16,7 +18,7 @@ First public release.
 - CSV export (UTF-8 with BOM) with credential redaction and formula neutralisation.
 - Documented exit codes: 0, 1, 2, 3 (internal error) and 130 (interrupted).
 - Offline test suite with a network guard, coverage gate and GitHub Actions CI.
-- MIT license.
+- MIT license, contributing guide, issue template and Dependabot configuration.
 
 ### Changed
 - Responses are streamed and bodies are never downloaded.
@@ -27,3 +29,6 @@ First public release.
 - One malformed URL line (for example a control character or invalid host name)
   no longer crashes the whole run.
 - `--timeout nan` and `--timeout inf` are rejected instead of mislabelling or crashing.
+
+[Unreleased]: https://github.com/AnimeshHembram/LinkCheck/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/AnimeshHembram/LinkCheck/releases/tag/v0.1.0

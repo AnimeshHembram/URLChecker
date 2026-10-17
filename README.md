@@ -1,5 +1,6 @@
 # LinkCheck CLI
 
+[![CI](https://github.com/AnimeshHembram/LinkCheck/actions/workflows/ci.yml/badge.svg)](https://github.com/AnimeshHembram/LinkCheck/actions/workflows/ci.yml)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -38,6 +39,11 @@ CSV report saved to: report.csv
 ## Installation
 
 Clone the repository, create a virtual environment and install LinkCheck into it.
+
+```bash
+git clone https://github.com/AnimeshHembram/LinkCheck.git
+cd LinkCheck
+```
 
 **Windows (PowerShell)**
 
@@ -199,7 +205,8 @@ src/linkcheck/cli.py       command-line interface and exit codes
 tests/                     offline test suite
 ```
 
-See [CHANGELOG.md](CHANGELOG.md) for release notes.
+See [CHANGELOG.md](CHANGELOG.md) for release notes and
+[CONTRIBUTING.md](CONTRIBUTING.md) if you would like to help.
 
 ## License
 
