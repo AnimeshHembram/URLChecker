@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import __version__
 from .checker import check_urls, load_urls
 from .reporter import print_report, write_csv
 
@@ -12,6 +13,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="linkcheck",
         description="Check URLs for HTTP errors, redirects, and connection problems.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"linkcheck {__version__}"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

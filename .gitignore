@@ -1,9 +1,22 @@
+# Virtual environments
 .venv/
+
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
 .pytest_cache/
-*.egg-info/
-build/
-dist/
-reports/*.csv
 .ruff_cache/
+
+# Packaging
+*.egg-info/
+/build/
+/dist/
+
+# Coverage
+/.coverage
+/.coverage.*
+/htmlcov/
+/coverage.xml
+
+# Generated reports
+/reports/*.csv

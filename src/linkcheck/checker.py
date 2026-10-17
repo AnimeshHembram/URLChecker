@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from . import __version__
+
 
 @dataclass
 class CheckResult:
@@ -46,7 +48,7 @@ def check_url(
             timeout=timeout,
             follow_redirects=True,
             max_redirects=10,
-            headers={"User-Agent": "LinkCheck/0.1.0 (URL health checker)"},
+            headers={"User-Agent": f"LinkCheck/{__version__} (+URL health checker)"},
             transport=transport,
         ) as client:
             response = client.get(url)
