@@ -1,30 +1,64 @@
 """Terminal and CSV reporting."""
 
+from __future__ import annotations
+
 import csv
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from .checker import CheckResult
 
+CSV_FIELDS = [
+    "url",
+    "final_url",
+    "status_code",
+    "outcome",
+    "elapsed_ms",
+    "redirect_count",
+    "error",
+]
+
+# Characters that make spreadsheet programs treat a cell as a formula.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def redact_url(url: str) -> str:
+    """Replace any ``user:password@`` part of a URL with ``***@``."""
+    try:
+        parts = urlsplit(url)
+        if "@" not in parts.netloc:
+            return url
+        host = parts.netloc.rsplit("@", 1)[1]
+        return urlunsplit(
+            (parts.scheme, f"***@{host}", parts.path, parts.query, parts.fragment)
+        )
+    except Exception:
+        return url
+
+
+def csv_safe(value: object) -> object:
+    """Prefix text that a spreadsheet would run as a formula with a quote."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def _csv_row(result: CheckResult) -> dict:
+    row = result.to_dict()
+    row["url"] = redact_url(result.url)
+    row["final_url"] = redact_url(result.final_url)
+    return {key: csv_safe(value) for key, value in row.items()}
+
 
 def write_csv(results: list[CheckResult], output: str) -> None:
-    """Write results to a CSV file."""
+    """Write results to a UTF-8 (with BOM) CSV file, overwriting it if present."""
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    fields = [
-        "url",
-        "final_url",
-        "status_code",
-        "outcome",
-        "elapsed_ms",
-        "redirect_count",
-        "error",
-    ]
     with path.open("w", newline="", encoding="utf-8-sig") as file:
-        writer = csv.DictWriter(file, fieldnames=fields)
+        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for result in results:
-            writer.writerow(result.to_dict())
+            writer.writerow(_csv_row(result))
 
 
 def print_report(results: list[CheckResult]) -> None:
@@ -34,16 +68,18 @@ def print_report(results: list[CheckResult]) -> None:
     print("-" * 100)
 
     for result in results:
+        url = redact_url(result.url)
+        final_url = redact_url(result.final_url)
         status = str(result.status_code) if result.status_code is not None else "-"
         elapsed = f"{result.elapsed_ms} ms"
         print(
             f"{result.outcome:<14} {status:>5} {elapsed:>8} "
-            f"{result.redirect_count:>5}  {result.url}"
+            f"{result.redirect_count:>5}  {url}"
         )
         if result.error:
             print(f"    Detail: {result.error}")
-        elif result.final_url and result.final_url != result.url:
-            print(f"    Final URL: {result.final_url}")
+        elif final_url and final_url != url:
+            print(f"    Final URL: {final_url}")
 
     counts: dict[str, int] = {}
     for result in results:
@@ -53,3 +89,5 @@ def print_report(results: list[CheckResult]) -> None:
     print(f"Total: {len(results)} URL(s)")
     for outcome, count in sorted(counts.items()):
         print(f"  {outcome}: {count}")
+    if counts.get("RESTRICTED"):
+        print("Note: RESTRICTED results do not affect the exit code.")
