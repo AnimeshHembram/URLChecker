@@ -1,4 +1,4 @@
-﻿"""Command-line interface for LinkCheck."""
+"""Command-line interface for LinkCheck."""
 
 import argparse
 import sys
@@ -17,15 +17,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = subparsers.add_parser("check", help="Check URLs from a text file")
     check.add_argument("file", help="Text file containing one URL per line")
+    check.add_argument("--output", "-o", help="Optional CSV output path")
     check.add_argument(
-        "--output", "-o", help="Optional CSV output path"
-    )
-    check.add_argument(
-        "--timeout", type=float, default=10.0,
+        "--timeout",
+        type=float,
+        default=10.0,
         help="Per-request timeout in seconds (default: 10)",
     )
     check.add_argument(
-        "--workers", type=int, default=10,
+        "--workers",
+        type=int,
+        default=10,
         help="Maximum concurrent requests (default: 10)",
     )
     return parser
@@ -57,9 +59,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"LinkCheck: checking {len(urls)} URL(s)...")
     try:
-        results = check_urls(
-            urls, timeout=args.timeout, workers=args.workers
-        )
+        results = check_urls(urls, timeout=args.timeout, workers=args.workers)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2

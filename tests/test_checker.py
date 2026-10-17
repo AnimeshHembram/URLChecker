@@ -1,4 +1,4 @@
-﻿import httpx
+import httpx
 
 from linkcheck.checker import check_url, check_urls, load_urls
 
@@ -32,9 +32,7 @@ def test_restricted_url():
 def test_redirect_is_recorded():
     def handler(request):
         if request.url.path == "/old":
-            return httpx.Response(
-                302, headers={"Location": "/new"}, request=request
-            )
+            return httpx.Response(302, headers={"Location": "/new"}, request=request)
         return httpx.Response(200, request=request)
 
     result = check_url(
@@ -57,9 +55,7 @@ def test_urls_file(tmp_path):
         "# comment\n\nhttps://example.com\n https://openai.com \n",
         encoding="utf-8",
     )
-    assert load_urls(str(source)) == [
-        "https://example.com", "https://openai.com"
-    ]
+    assert load_urls(str(source)) == ["https://example.com", "https://openai.com"]
 
 
 def test_concurrent_checker_preserves_order():

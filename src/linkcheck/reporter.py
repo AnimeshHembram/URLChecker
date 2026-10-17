@@ -1,4 +1,4 @@
-﻿"""Terminal and CSV reporting."""
+"""Terminal and CSV reporting."""
 
 import csv
 from pathlib import Path
@@ -12,8 +12,13 @@ def write_csv(results: list[CheckResult], output: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     fields = [
-        "url", "final_url", "status_code", "outcome",
-        "elapsed_ms", "redirect_count", "error",
+        "url",
+        "final_url",
+        "status_code",
+        "outcome",
+        "elapsed_ms",
+        "redirect_count",
+        "error",
     ]
     with path.open("w", newline="", encoding="utf-8-sig") as file:
         writer = csv.DictWriter(file, fieldnames=fields)

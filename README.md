@@ -1,4 +1,4 @@
-﻿# LinkCheck CLI
+# LinkCheck CLI
 
 A free, local-first command-line tool that checks supplied HTTP/HTTPS URLs,
 records HTTP status and redirects, and exports results to CSV.

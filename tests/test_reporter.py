@@ -1,4 +1,4 @@
-﻿import csv
+import csv
 
 from linkcheck.checker import CheckResult
 from linkcheck.reporter import write_csv

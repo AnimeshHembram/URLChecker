@@ -1,4 +1,4 @@
-﻿"""HTTP URL checking engine."""
+"""HTTP URL checking engine."""
 
 from __future__ import annotations
 
@@ -73,9 +73,13 @@ def check_url(
     except ValueError as exc:
         message = str(exc)
         return CheckResult(
-            url=url, final_url="", status_code=None,
-            outcome="INVALID", elapsed_ms=round((perf_counter() - started) * 1000),
-            redirect_count=0, error=message,
+            url=url,
+            final_url="",
+            status_code=None,
+            outcome="INVALID",
+            elapsed_ms=round((perf_counter() - started) * 1000),
+            redirect_count=0,
+            error=message,
         )
     except httpx.TooManyRedirects:
         message = "Too many redirects"
@@ -87,9 +91,13 @@ def check_url(
         message = f"Request failed: {type(exc).__name__}"
 
     return CheckResult(
-        url=url, final_url="", status_code=None, outcome="ERROR",
+        url=url,
+        final_url="",
+        status_code=None,
+        outcome="ERROR",
         elapsed_ms=round((perf_counter() - started) * 1000),
-        redirect_count=0, error=message,
+        redirect_count=0,
+        error=message,
     )
 
 
@@ -115,8 +123,5 @@ def check_urls(
         raise ValueError("timeout must be greater than 0")
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [
-            pool.submit(check_url, url, timeout)
-            for url in urls
-        ]
+        futures = [pool.submit(check_url, url, timeout) for url in urls]
         return [future.result() for future in futures]

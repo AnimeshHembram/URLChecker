@@ -1,4 +1,4 @@
-﻿"""Allow running LinkCheck with python -m linkcheck."""
+"""Allow running LinkCheck with python -m linkcheck."""
 
 from .cli import main
 
