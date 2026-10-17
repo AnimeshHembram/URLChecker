@@ -1,0 +1,5 @@
+﻿# One HTTP or HTTPS URL per line
+https://example.com
+https://www.python.org
+https://httpbin.org/status/404
+https://httpbin.org/redirect/2
