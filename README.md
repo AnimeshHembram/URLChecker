@@ -6,9 +6,11 @@
 
 A free, local-first command-line tool that checks a list of HTTP/HTTPS URLs,
 follows redirects, explains what went wrong with each link, and exports the
-results to a CSV file you can open in Excel or Google Sheets.
+results to a CSV file you can open in Excel or Google Sheets, or to JSON for
+scripts and dashboards.
 
-It checks only the URLs you give it. It does not crawl websites.
+It checks only the URLs you give it. It does not crawl websites. The repository
+is called **URLChecker**; the command it installs is `linkcheck`.
 
 Example output (timings will differ):
 
@@ -27,7 +29,7 @@ OK               200    910 ms     2  https://httpbin.org/redirect/2
 Total: 4 URL(s)
   BROKEN: 1
   OK: 3
-
+Finished in 2.4s
 CSV report saved to: report.csv
 ```
 
@@ -84,14 +86,19 @@ Then run:
 ```bash
 linkcheck check urls.txt                     # print a report
 linkcheck check urls.txt -o reports/out.csv  # also save a CSV
+linkcheck check urls.txt --json reports/out.json   # machine-readable report
+linkcheck check urls.txt --quiet             # list only links that need attention
+linkcheck check urls.txt --retries 2         # retry timeouts and 429/5xx answers
 linkcheck check urls.txt --timeout 5 --workers 4
+Get-Content urls.txt | linkcheck check -      # read from standard input (PowerShell)
+cat urls.txt | linkcheck check -              # read from standard input (macOS/Linux)
 linkcheck --version
 python -m linkcheck check urls.txt           # same thing, without the launcher
 ```
 
 Every non-blank line that does not start with `#` is one URL line and produces
-exactly one result, in the same order as the file. Duplicates are checked each
-time. There are no inline comments: `https://example.com/ #note` is reported as
+exactly one result, in the same order as the file. A URL that appears several
+times is requested only once, and each of its lines gets the same result. There are no inline comments: `https://example.com/ #note` is reported as
 `INVALID` because it contains a space. A `#` with no space before it is a normal
 URL fragment (`https://example.com/#section`).
 
@@ -103,10 +110,18 @@ sites (example.com, python.org, httpbin.org).
 
 | Option | Default | Meaning |
 |---|---|---|
+| `FILE` | | Text file with one URL per line, or `-` to read from standard input. |
 | `-o`, `--output PATH` | none | Also write a CSV report to `PATH`. Missing folders are created. An existing file is **overwritten without asking**. |
+| `--json PATH` | none | Also write a JSON report (results plus a summary) to `PATH`. Overwritten without asking. |
+| `-q`, `--quiet` | off | List only results that are not `OK`. The summary still counts everything. |
+| `--retries N` | `0` | Retry timeouts, connection errors and HTTP 429/502/503/504 answers up to `N` times (0-5), waiting 0.5 s, 1 s, 2 s, 4 s, 4 s between attempts. Other results are never retried. |
 | `--timeout SECONDS` | `10` | Maximum wait for **each network step**: connecting, sending the request, and waiting for the server to start answering. Must be greater than 0 and at most 600. It is not a cap on the total time per URL; a URL that redirects makes one request per hop, so it can take longer than `SECONDS` overall. |
 | `--workers N` | `10` | How many URLs are checked at the same time, from 1 to 50. |
 | `--version` | | Print the version and exit. |
+
+While a list of several URLs is being checked in an interactive terminal, a
+`Checked 12/40` counter is shown on the error stream. It is not shown when the
+output is redirected to a file or pipe.
 
 ## Outcomes
 
@@ -128,7 +143,7 @@ bodies, so links to large files are checked quickly.
 |---|---|
 | `0` | Finished; every result is `OK` or `RESTRICTED` (or the file had no URL lines). |
 | `1` | Finished; at least one result is `BROKEN`, `SERVER_ERROR`, `ERROR` or `INVALID`. |
-| `2` | Usage, input or output problem: bad option, input file missing or not UTF-8, or the CSV could not be written. |
+| `2` | Usage, input or output problem: bad option, input missing or not UTF-8, or a report could not be written. |
 | `3` | Internal error in LinkCheck (a bug). Set the environment variable `LINKCHECK_DEBUG=1` to print the full traceback, and please report it. |
 | `130` | Interrupted with Ctrl+C. No report is written. |
 
@@ -153,16 +168,49 @@ The file is UTF-8 with a byte-order mark so that Excel shows non-English
 characters correctly. For safety:
 
 - Passwords and user names written inside URLs (`https://user:password@host/`)
-  are replaced with `***` in both the terminal output and the CSV.
+  are replaced with `***` in the terminal output, the CSV and the JSON.
+- Invisible characters in a URL line (for example a NUL byte or a zero-width
+  space, which make the line `INVALID`) are shown as escapes such as `\x00` or
+  `\u200b` instead of being written raw.
 - Any cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets
   a leading `'` so spreadsheet programs do not run it as a formula.
+
+## JSON report
+
+`--json PATH` writes UTF-8 JSON (no byte-order mark) like this:
+
+```json
+{
+  "tool": "linkcheck",
+  "version": "0.2.0",
+  "generated_at": "2026-10-18T15:30:00+00:00",
+  "elapsed_seconds": 2.412,
+  "summary": {"total": 4, "problems": 1, "outcomes": {"BROKEN": 1, "OK": 3}},
+  "results": [
+    {
+      "url": "https://httpbin.org/redirect/2",
+      "final_url": "https://httpbin.org/get",
+      "status_code": 200,
+      "outcome": "OK",
+      "elapsed_ms": 910,
+      "redirect_count": 2,
+      "error": "",
+      "attempts": 1
+    }
+  ]
+}
+```
+
+`results` has the same fields as the CSV plus `attempts` (how many requests were
+made, counting retries). Credentials in URLs are redacted; `problems` counts the
+results that make the exit code 1.
 
 ## Privacy and responsible use
 
 - LinkCheck runs on your computer. The only network traffic is one GET request
   per URL (plus redirects), sent with the User-Agent
   `LinkCheck/<version> (+URL health checker)`.
-- Nothing is uploaded or stored anywhere except the CSV you ask for.
+- Nothing is uploaded or stored anywhere except the reports you ask for.
 - Query strings are **not** redacted. Remove tokens from URLs before sharing
   reports.
 - Check only URLs you are allowed to check, and keep `--workers` modest when
@@ -175,10 +223,11 @@ characters correctly. For safety:
   HTTP 200 (a "soft 404") is reported as `OK`.
 - Some servers block automated requests, which can show up as `RESTRICTED` or
   `ERROR` even though the page works in a browser.
-- No retries and no per-site rate limiting.
+- Retries are off by default (`--retries`), and there is no per-site rate
+  limiting; `elapsed_ms` describes the last attempt only.
 - `--timeout` limits each network step, not the total time per URL.
-- After Ctrl+C, requests already in progress may keep the program running for up
-  to `--timeout` seconds.
+- After Ctrl+C the program stops waiting immediately, but requests already in
+  progress may keep it running for up to `--timeout` seconds before it exits.
 - Response bodies of intermediate redirects may be read by the HTTP library
   (they are normally tiny).
 
@@ -203,7 +252,7 @@ Project layout:
 
 ```text
 src/linkcheck/checker.py   validation, HTTP checks, classification
-src/linkcheck/reporter.py  terminal table and CSV export
+src/linkcheck/reporter.py  terminal table, CSV and JSON export
 src/linkcheck/cli.py       command-line interface and exit codes
 tests/                     offline test suite
 ```

@@ -323,3 +323,65 @@ def test_duplicates_checked_once(url_file, capsys):
 def test_finished_line(url_file, capsys):
     assert run(["check", url_file("https://a.test/")]) == 0
     assert "Finished in " in capsys.readouterr().out
+
+
+# --- round 3: retries and progress -----------------------------------------
+
+
+@pytest.mark.parametrize("value", ["-1", "6", "x"])
+def test_bad_retries(url_file, value, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["check", url_file("https://a.test/"), "--retries", value])
+    assert exc.value.code == 2
+    assert "--retries must be a whole number from 0 to 5" in capsys.readouterr().err
+
+
+def test_retries_option(url_file, monkeypatch):
+    from linkcheck import checker
+
+    monkeypatch.setattr(checker, "_sleep", lambda seconds: None)
+    seen = []
+
+    def handler(request):
+        seen.append(1)
+        status = 503 if len(seen) == 1 else 200
+        return httpx.Response(status, request=request)
+
+    path = url_file("https://a.test/")
+    code = cli.main(
+        ["check", path, "--retries", "2"], transport=httpx.MockTransport(handler)
+    )
+    assert code == 0
+    assert len(seen) == 2
+
+
+class FakeTTY(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_progress_shown_on_tty(url_file, monkeypatch):
+    stream = FakeTTY()
+    monkeypatch.setattr(sys, "stderr", stream)
+    assert run(["check", url_file("https://a.test/1", "https://a.test/2")]) == 0
+    text = stream.getvalue()
+    assert "\rChecked 2/2" in text
+    assert text.endswith("\r")
+
+
+def test_no_progress_for_single_url_or_pipe(url_file, monkeypatch, capsys):
+    stream = FakeTTY()
+    monkeypatch.setattr(sys, "stderr", stream)
+    assert run(["check", url_file("https://a.test/1")]) == 0
+    assert stream.getvalue() == ""
+
+
+def test_attempts_in_json_not_csv(url_file, tmp_path):
+    csv_path, json_path = tmp_path / "r.csv", tmp_path / "r.json"
+    path = url_file("https://a.test/")
+    assert run(["check", path, "-o", str(csv_path), "--json", str(json_path)]) == 0
+    header = csv_path.read_text(encoding="utf-8-sig").splitlines()[0]
+    assert "attempts" not in header
+    assert (
+        json.loads(json_path.read_text(encoding="utf-8"))["results"][0]["attempts"] == 1
+    )

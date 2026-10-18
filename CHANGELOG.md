@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-18
+
 ### Added
 - Read URLs from standard input with `linkcheck check -`.
 - `--json PATH` writes a JSON report with a summary block.
@@ -13,6 +15,9 @@ All notable changes to this project are documented here. The format follows
 - A URL that appears several times is requested once; every line still gets
   its own result row.
 - The summary ends with the total run time.
+- `--retries N` (0-5) retries timeouts, connection errors and HTTP
+  429/502/503/504 with a short back-off; the JSON report records `attempts`.
+- A `Checked 3/40` progress counter on interactive terminals.
 
 ### Fixed
 - Repository links now point to `AnimeshHembram/URLChecker`.
@@ -23,6 +28,7 @@ All notable changes to this project are documented here. The format follows
   permission errors; `.pytest-tmp/` is ignored by Git.
 
 ### Changed
+- Ctrl+C is handled promptly on Windows while checks are running.
 - CI uses `actions/checkout@v7` and `actions/setup-python@v7`.
 
 ## [0.1.0] - 2026-10-17
@@ -49,5 +55,6 @@ First public release.
   no longer crashes the whole run.
 - `--timeout nan` and `--timeout inf` are rejected instead of mislabelling or crashing.
 
-[Unreleased]: https://github.com/AnimeshHembram/URLChecker/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/AnimeshHembram/URLChecker/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/AnimeshHembram/URLChecker/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AnimeshHembram/URLChecker/releases/tag/v0.1.0

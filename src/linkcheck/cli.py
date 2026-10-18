@@ -14,11 +14,13 @@ import httpx
 from . import __version__
 from .checker import (
     FAILURE_OUTCOMES,
+    RETRIES_MESSAGE,
     TIMEOUT_MESSAGE,
     WORKERS_MESSAGE,
     check_urls,
     load_urls,
     parse_url_lines,
+    validate_retries,
     validate_timeout,
     validate_workers,
 )
@@ -45,6 +47,13 @@ def _workers_arg(value: str) -> int:
         return validate_workers(int(value))
     except ValueError:
         raise argparse.ArgumentTypeError(WORKERS_MESSAGE) from None
+
+
+def _retries_arg(value: str) -> int:
+    try:
+        return validate_retries(int(value))
+    except ValueError:
+        raise argparse.ArgumentTypeError(RETRIES_MESSAGE) from None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,6 +115,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="Number of URLs checked at the same time, 1-50 (default: 10)",
     )
+    check.add_argument(
+        "--retries",
+        type=_retries_arg,
+        default=0,
+        metavar="N",
+        help=(
+            "Retry timeouts, connection errors and HTTP 429/502/503/504 up to "
+            "N times with a short back-off, 0-5 (default: 0)"
+        ),
+    )
     return parser
 
 
@@ -118,6 +137,26 @@ def _make_console_safe() -> None:
                 reconfigure(errors="replace")
             except Exception:  # pragma: no cover - exotic stream objects
                 pass
+
+
+class _Progress:
+    """Show "Checked 3/40" on stderr while running, only in an interactive console."""
+
+    def __init__(self, stream) -> None:
+        self.stream = stream
+        self.enabled = bool(getattr(stream, "isatty", lambda: False)())
+        self.shown = False
+
+    def __call__(self, done: int, total: int) -> None:
+        if self.enabled and total > 1:
+            self.stream.write(f"\rChecked {done}/{total}")
+            self.stream.flush()
+            self.shown = True
+
+    def clear(self) -> None:
+        if self.shown:
+            self.stream.write("\r" + " " * 30 + "\r")
+            self.stream.flush()
 
 
 def _read_urls(source: str) -> list[str] | None:
@@ -153,10 +192,19 @@ def _run(argv: list[str] | None, transport: httpx.BaseTransport | None) -> int:
     unique = len(set(urls))
     extra = f" ({unique} unique)" if unique != len(urls) else ""
     print(f"LinkCheck: checking {len(urls)} URL(s){extra}...")
+    progress = _Progress(sys.stderr)
     started = perf_counter()
-    results = check_urls(
-        urls, timeout=args.timeout, workers=args.workers, transport=transport
-    )
+    try:
+        results = check_urls(
+            urls,
+            timeout=args.timeout,
+            workers=args.workers,
+            transport=transport,
+            retries=args.retries,
+            on_progress=progress,
+        )
+    finally:
+        progress.clear()
     elapsed_s = perf_counter() - started
     print_report(results, quiet=args.quiet, elapsed_s=elapsed_s)
 

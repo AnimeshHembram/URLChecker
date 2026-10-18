@@ -353,3 +353,115 @@ def test_duplicate_results_are_independent_copies():
     assert [r.url for r in results] == ["https://a.test/", "https://a.test/"]
     assert results[0] == results[1]
     assert results[0] is not results[1]
+
+
+# --- round 3: retries and progress -----------------------------------------
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    delays = []
+    monkeypatch.setattr(checker, "_sleep", delays.append)
+    return delays
+
+
+def sequence(*steps):
+    """A transport that answers successive requests with the given steps."""
+    remaining = list(steps)
+
+    def handler(request):
+        step = remaining.pop(0) if len(remaining) > 1 else remaining[0]
+        if isinstance(step, int):
+            return httpx.Response(step, request=request)
+        raise step(request)
+
+    return httpx.MockTransport(handler)
+
+
+def timeout_exc(request):
+    return httpx.ReadTimeout("slow", request=request)
+
+
+def test_retry_recovers_from_timeout(no_sleep):
+    transport = sequence(timeout_exc, timeout_exc, 200)
+    result = checker.check_url_with_retries("https://a.test/", 1, transport, retries=3)
+    assert result.outcome == "OK"
+    assert result.attempts == 3
+    assert no_sleep == [0.5, 1.0]
+
+
+def test_retry_gives_up_after_limit(no_sleep):
+    transport = sequence(503)
+    result = checker.check_url_with_retries("https://a.test/", 1, transport, retries=2)
+    assert result.outcome == "SERVER_ERROR"
+    assert result.attempts == 3
+    assert no_sleep == [0.5, 1.0]
+
+
+def test_no_retry_by_default(no_sleep):
+    result = checker.check_url_with_retries("https://a.test/", 1, sequence(503))
+    assert result.attempts == 1
+    assert no_sleep == []
+
+
+@pytest.mark.parametrize("status", [404, 500, 403, 200])
+def test_permanent_statuses_not_retried(no_sleep, status):
+    result = checker.check_url_with_retries(
+        "https://a.test/", 1, sequence(status), retries=3
+    )
+    assert result.attempts == 1
+
+
+@pytest.mark.parametrize(
+    "error, retryable",
+    [
+        ("Timed out after 1s (connecting)", True),
+        ("Connection failed", True),
+        ("Request failed: ReadError", True),
+        ("Request failed: UnicodeError: bad label", False),
+        ("DNS lookup failed", False),
+        ("TLS certificate verification failed", False),
+        ("Too many redirects (limit is 10)", False),
+        ("Unexpected error: RuntimeError: boom", False),
+    ],
+)
+def test_is_retryable_errors(error, retryable):
+    result = checker.CheckResult("u", "", None, "ERROR", 0, 0, error)
+    assert checker.is_retryable(result) is retryable
+
+
+@pytest.mark.parametrize("status", [429, 502, 503, 504])
+def test_is_retryable_statuses(status):
+    outcome, _ = classify_status(status)
+    result = checker.CheckResult("u", "u", status, outcome, 0, 0)
+    assert checker.is_retryable(result)
+
+
+def test_invalid_is_not_retryable():
+    result = check_url("ftp://x")
+    assert not checker.is_retryable(result)
+
+
+def test_retry_delays_are_capped():
+    assert [checker.retry_delay(n) for n in range(1, 7)] == [0.5, 1, 2, 4, 4, 4]
+
+
+@pytest.mark.parametrize("retries", [-1, 6])
+def test_check_urls_rejects_bad_retries(retries):
+    with pytest.raises(ValueError):
+        check_urls(["https://a.test/"], retries=retries)
+
+
+def test_check_urls_passes_retries(no_sleep):
+    results = check_urls(["https://a.test/"], transport=sequence(503, 200), retries=1)
+    assert results[0].outcome == "OK"
+    assert results[0].attempts == 2
+
+
+def test_progress_callback_counts_unique_urls():
+    calls = []
+    urls = ["https://a.test/1", "https://a.test/2", "https://a.test/1"]
+    check_urls(
+        urls, transport=respond(200), on_progress=lambda d, t: calls.append((d, t))
+    )
+    assert calls == [(1, 2), (2, 2)]

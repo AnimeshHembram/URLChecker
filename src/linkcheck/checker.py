@@ -6,9 +6,10 @@ import ipaddress
 import math
 import socket
 import ssl
+import time
 import unicodedata
-from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Iterable
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, replace
 from time import perf_counter
 from urllib.parse import urlsplit
@@ -30,6 +31,10 @@ TIMEOUT_MESSAGE = (
     "--timeout must be a finite number of seconds greater than 0 and at most 600"
 )
 WORKERS_MESSAGE = "--workers must be a whole number from 1 to 50"
+MAX_RETRIES = 5
+RETRIES_MESSAGE = "--retries must be a whole number from 0 to 5"
+# Final statuses that usually mean "try again later".
+RETRY_STATUSES = frozenset({429, 502, 503, 504})
 
 # Unicode categories rejected anywhere in a URL: control, format (e.g. zero-width
 # space) and separator characters.
@@ -48,6 +53,7 @@ class CheckResult:
     elapsed_ms: int
     redirect_count: int
     error: str = ""
+    attempts: int = 1
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -65,6 +71,13 @@ def validate_workers(workers: int) -> int:
     if not (1 <= workers <= MAX_WORKERS):
         raise ValueError(WORKERS_MESSAGE)
     return workers
+
+
+def validate_retries(retries: int) -> int:
+    """Return ``retries`` if it is within [0, 5], else raise."""
+    if not (0 <= retries <= MAX_RETRIES):
+        raise ValueError(RETRIES_MESSAGE)
+    return retries
 
 
 def _short(exc: BaseException) -> str:
@@ -296,19 +309,64 @@ def _unexpected(url: str, exc: BaseException) -> CheckResult:
     )
 
 
+def is_retryable(result: CheckResult) -> bool:
+    """True for failures that are often temporary (timeouts, resets, 429/5xx)."""
+    if result.status_code in RETRY_STATUSES:
+        return True
+    if result.outcome != "ERROR" or result.status_code is not None:
+        return False
+    error = result.error
+    if error.startswith(("Timed out", "Connection failed")):
+        return True
+    # "Request failed: ReadError" style transport errors, but not ones that
+    # carry a message about the URL itself.
+    return error.startswith("Request failed: ") and error.count(":") == 1
+
+
+def retry_delay(attempt: int) -> float:
+    """Seconds to wait before retry number ``attempt`` (1-based): 0.5, 1, 2, 4, 4."""
+    return min(0.5 * 2 ** (attempt - 1), 4.0)
+
+
+_sleep = time.sleep  # replaced in tests
+
+
+def check_url_with_retries(
+    url: str,
+    timeout: float = 10.0,
+    transport: httpx.BaseTransport | None = None,
+    retries: int = 0,
+) -> CheckResult:
+    """Like :func:`check_url`, retrying temporary failures up to ``retries`` times."""
+    result = check_url(url, timeout, transport)
+    attempts = 1
+    while attempts <= retries and is_retryable(result):
+        _sleep(retry_delay(attempts))
+        result = check_url(url, timeout, transport)
+        attempts += 1
+    return replace(result, attempts=attempts)
+
+
+ProgressCallback = Callable[[int, int], None]
+
+
 def check_urls(
     urls: list[str],
     timeout: float = 10.0,
     workers: int = 10,
     transport: httpx.BaseTransport | None = None,
+    retries: int = 0,
+    on_progress: ProgressCallback | None = None,
 ) -> list[CheckResult]:
     """Check URLs concurrently and return exactly one result per URL, in order.
 
     A URL that appears more than once is only requested once; every occurrence
-    gets its own copy of the result.
+    gets its own copy of the result. ``on_progress(done, total)`` is called in
+    the calling thread each time a unique URL finishes.
     """
     validate_workers(workers)
     validate_timeout(timeout)
+    validate_retries(retries)
     if not urls:
         return []
 
@@ -316,14 +374,23 @@ def check_urls(
     pool = ThreadPoolExecutor(max_workers=min(workers, len(unique)))
     try:
         futures = {
-            url: pool.submit(check_url, url, timeout, transport) for url in unique
+            pool.submit(check_url_with_retries, url, timeout, transport, retries): url
+            for url in unique
         }
         checked: dict[str, CheckResult] = {}
-        for url, future in futures.items():
-            try:
-                checked[url] = future.result()
-            except Exception as exc:  # defence in depth; check_url should not raise
-                checked[url] = _unexpected(url, exc)
+        pending = set(futures)
+        while pending:
+            # A short timeout keeps Ctrl+C responsive on Windows, where a
+            # blocking wait cannot be interrupted.
+            done, pending = wait(pending, timeout=0.25, return_when=FIRST_COMPLETED)
+            for future in done:
+                url = futures[future]
+                try:
+                    checked[url] = future.result()
+                except Exception as exc:  # defence in depth
+                    checked[url] = _unexpected(url, exc)
+                if on_progress is not None:
+                    on_progress(len(checked), len(unique))
     except BaseException:
         pool.shutdown(wait=False, cancel_futures=True)
         raise

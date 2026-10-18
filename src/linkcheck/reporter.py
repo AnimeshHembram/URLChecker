@@ -82,7 +82,7 @@ def write_csv(results: list[CheckResult], output: str) -> None:
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8-sig") as file:
-        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
+        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
         for result in results:
             writer.writerow(_csv_row(result))
