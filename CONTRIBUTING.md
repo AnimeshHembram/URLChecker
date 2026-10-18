@@ -4,7 +4,7 @@ Thanks for your interest! Bug reports, ideas and pull requests are welcome.
 
 ## Reporting a bug
 
-Open an [issue](https://github.com/AnimeshHembram/LinkCheck/issues) and include:
+Open an [issue](https://github.com/AnimeshHembram/URLChecker/issues) and include:
 
 - the command you ran and the output (remove any private URLs or tokens),
 - `linkcheck --version`, your operating system and Python version,
@@ -31,6 +31,19 @@ Open an [issue](https://github.com/AnimeshHembram/LinkCheck/issues) and include:
    ```
 
 5. Add a line to the "Unreleased" section of `CHANGELOG.md` and open a pull request.
+
+## Troubleshooting on Windows
+
+If pytest fails with `PermissionError: [WinError 5] Access is denied` while
+creating or cleaning its temporary folders (this can happen with Controlled
+Folder Access or locked-down temp folders), point it at a folder inside the
+project instead:
+
+```powershell
+python -m pytest --basetemp=.pytest-tmp
+```
+
+`.pytest-tmp/` is already ignored by Git.
 
 ## Ground rules
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import unicodedata
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -20,6 +21,28 @@ CSV_FIELDS = [
 
 # Characters that make spreadsheet programs treat a cell as a formula.
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def visible(text: str) -> str:
+    """Show invisible control, format and line-separator characters as escapes.
+
+    A URL line can contain characters such as NUL or a zero-width space (that
+    is why it was reported INVALID). Writing them raw would corrupt the
+    terminal table or make spreadsheets cut the cell short.
+    """
+    out = []
+    for ch in text:
+        if ch != " " and unicodedata.category(ch) in {"Cc", "Cf", "Zl", "Zp", "Zs"}:
+            code = ord(ch)
+            out.append(f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def display_url(url: str) -> str:
+    """The form of a URL used in every report: credentials hidden, controls shown."""
+    return visible(redact_url(url))
 
 
 def redact_url(url: str) -> str:
@@ -45,8 +68,9 @@ def csv_safe(value: object) -> object:
 
 def _csv_row(result: CheckResult) -> dict:
     row = result.to_dict()
-    row["url"] = redact_url(result.url)
-    row["final_url"] = redact_url(result.final_url)
+    row["url"] = display_url(result.url)
+    row["final_url"] = display_url(result.final_url)
+    row["error"] = visible(result.error)
     return {key: csv_safe(value) for key, value in row.items()}
 
 
@@ -68,8 +92,8 @@ def print_report(results: list[CheckResult]) -> None:
     print("-" * 100)
 
     for result in results:
-        url = redact_url(result.url)
-        final_url = redact_url(result.final_url)
+        url = display_url(result.url)
+        final_url = display_url(result.final_url)
         status = str(result.status_code) if result.status_code is not None else "-"
         elapsed = f"{result.elapsed_ms} ms"
         print(
@@ -77,7 +101,7 @@ def print_report(results: list[CheckResult]) -> None:
             f"{result.redirect_count:>5}  {url}"
         )
         if result.error:
-            print(f"    Detail: {result.error}")
+            print(f"    Detail: {visible(result.error)}")
         elif final_url and final_url != url:
             print(f"    Final URL: {final_url}")
 

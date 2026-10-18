@@ -1,6 +1,6 @@
 # LinkCheck CLI
 
-[![CI](https://github.com/AnimeshHembram/LinkCheck/actions/workflows/ci.yml/badge.svg)](https://github.com/AnimeshHembram/LinkCheck/actions/workflows/ci.yml)
+[![CI](https://github.com/AnimeshHembram/URLChecker/actions/workflows/ci.yml/badge.svg)](https://github.com/AnimeshHembram/URLChecker/actions/workflows/ci.yml)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -41,8 +41,8 @@ CSV report saved to: report.csv
 Clone the repository, create a virtual environment and install LinkCheck into it.
 
 ```bash
-git clone https://github.com/AnimeshHembram/LinkCheck.git
-cd LinkCheck
+git clone https://github.com/AnimeshHembram/URLChecker.git
+cd URLChecker
 ```
 
 **Windows (PowerShell)**
@@ -191,6 +191,9 @@ python -m pytest --cov=linkcheck --cov-branch --cov-report=term-missing --cov-fa
 python -m ruff check .
 python -m ruff format .
 ```
+
+On Windows, if pytest reports `WinError 5` for its temporary folders, add
+`--basetemp=.pytest-tmp`.
 
 The tests never contact the internet. HTTP is simulated with `httpx.MockTransport`
 and a small local server on `127.0.0.1`, and a guard in `tests/conftest.py` makes

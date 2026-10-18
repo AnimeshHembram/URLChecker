@@ -5,7 +5,15 @@ import csv
 import pytest
 
 from linkcheck.checker import CheckResult
-from linkcheck.reporter import CSV_FIELDS, csv_safe, print_report, redact_url, write_csv
+from linkcheck.reporter import (
+    CSV_FIELDS,
+    csv_safe,
+    display_url,
+    print_report,
+    redact_url,
+    visible,
+    write_csv,
+)
 
 
 def result(url="https://example.com", outcome="OK", **kwargs):
@@ -111,3 +119,31 @@ def test_print_report(capsys):
 def test_print_report_without_restricted(capsys):
     print_report([result()])
     assert "Note: RESTRICTED" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("http://exa\x00mple.com/", "http://exa\\x00mple.com/"),
+        ("https://a.test/page\u200b", "https://a.test/page\\u200b"),
+        ("a\tb\nc", "a\\x09b\\x0ac"),
+        ("https://a.test/ #note", "https://a.test/ #note"),
+        ("https://a.test/\u00a0x", "https://a.test/\\xa0x"),
+        ("https://b\u00fccher.test/", "https://b\u00fccher.test/"),
+    ],
+)
+def test_visible(text, expected):
+    assert visible(text) == expected
+
+
+def test_display_url_redacts_and_escapes():
+    assert display_url("https://u:p@a.test/\x7f") == "https://***@a.test/\\x7f"
+
+
+def test_control_characters_never_reach_csv(tmp_path):
+    output = tmp_path / "out.csv"
+    bad = "http://exa\x00mple.com/"
+    write_csv([result(bad, "INVALID", final_url="", status_code=None)], str(output))
+    raw = output.read_bytes()
+    assert b"\x00" not in raw
+    assert read_csv(output)[0]["url"] == "http://exa\\x00mple.com/"

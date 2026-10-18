@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Repository links now point to `AnimeshHembram/URLChecker`.
+- Invisible control characters in URL lines (NUL, zero-width space, tabs) are
+  shown as escapes such as `\x00` in the terminal and CSV instead of being
+  written raw.
+- Documented the Windows `--basetemp` workaround for pytest temp-folder
+  permission errors; `.pytest-tmp/` is ignored by Git.
+
+### Changed
+- CI uses `actions/checkout@v7` and `actions/setup-python@v7`.
+
 ## [0.1.0] - 2026-10-17
 
 First public release.
@@ -30,5 +41,5 @@ First public release.
   no longer crashes the whole run.
 - `--timeout nan` and `--timeout inf` are rejected instead of mislabelling or crashing.
 
-[Unreleased]: https://github.com/AnimeshHembram/LinkCheck/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/AnimeshHembram/LinkCheck/releases/tag/v0.1.0
+[Unreleased]: https://github.com/AnimeshHembram/URLChecker/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/AnimeshHembram/URLChecker/releases/tag/v0.1.0
