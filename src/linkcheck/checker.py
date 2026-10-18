@@ -7,8 +7,9 @@ import math
 import socket
 import ssl
 import unicodedata
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from time import perf_counter
 from urllib.parse import urlsplit
 
@@ -262,18 +263,37 @@ def check_url(
     )
 
 
-def load_urls(path: str) -> list[str]:
-    """Read URL lines from a UTF-8 text file (a leading BOM is allowed).
+def parse_url_lines(lines: Iterable[str]) -> list[str]:
+    """Return the URL lines from ``lines``, in order.
 
     A URL line is any line that is not blank and does not start with ``#``
-    once surrounding whitespace is removed. There are no inline comments.
+    once surrounding whitespace (and a leading byte-order mark) is removed.
+    There are no inline comments.
     """
+    urls = []
+    for number, line in enumerate(lines):
+        stripped = (line.lstrip("\ufeff") if number == 0 else line).strip()
+        if stripped and not stripped.startswith("#"):
+            urls.append(stripped)
+    return urls
+
+
+def load_urls(path: str) -> list[str]:
+    """Read URL lines from a UTF-8 text file (a leading BOM is allowed)."""
     with open(path, encoding="utf-8-sig") as file:
-        return [
-            stripped
-            for stripped in (line.strip() for line in file)
-            if stripped and not stripped.startswith("#")
-        ]
+        return parse_url_lines(file)
+
+
+def _unexpected(url: str, exc: BaseException) -> CheckResult:
+    return CheckResult(
+        url.strip(),
+        "",
+        None,
+        "ERROR",
+        0,
+        0,
+        f"Unexpected error: {type(exc).__name__}: {_short(exc)}",
+    )
 
 
 def check_urls(
@@ -282,33 +302,30 @@ def check_urls(
     workers: int = 10,
     transport: httpx.BaseTransport | None = None,
 ) -> list[CheckResult]:
-    """Check URLs concurrently and return exactly one result per URL, in order."""
+    """Check URLs concurrently and return exactly one result per URL, in order.
+
+    A URL that appears more than once is only requested once; every occurrence
+    gets its own copy of the result.
+    """
     validate_workers(workers)
     validate_timeout(timeout)
     if not urls:
         return []
 
-    pool = ThreadPoolExecutor(max_workers=min(workers, len(urls)))
+    unique = list(dict.fromkeys(url.strip() for url in urls))
+    pool = ThreadPoolExecutor(max_workers=min(workers, len(unique)))
     try:
-        futures = [pool.submit(check_url, url, timeout, transport) for url in urls]
-        results: list[CheckResult] = []
-        for url, future in zip(urls, futures, strict=True):
+        futures = {
+            url: pool.submit(check_url, url, timeout, transport) for url in unique
+        }
+        checked: dict[str, CheckResult] = {}
+        for url, future in futures.items():
             try:
-                results.append(future.result())
+                checked[url] = future.result()
             except Exception as exc:  # defence in depth; check_url should not raise
-                results.append(
-                    CheckResult(
-                        url.strip(),
-                        "",
-                        None,
-                        "ERROR",
-                        0,
-                        0,
-                        f"Unexpected error: {type(exc).__name__}: {_short(exc)}",
-                    )
-                )
+                checked[url] = _unexpected(url, exc)
     except BaseException:
         pool.shutdown(wait=False, cancel_futures=True)
         raise
     pool.shutdown(wait=True)
-    return results
+    return [replace(checked[url.strip()]) for url in urls]

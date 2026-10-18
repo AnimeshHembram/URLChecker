@@ -1,13 +1,16 @@
-"""Terminal and CSV reporting."""
+"""Terminal, CSV and JSON reporting."""
 
 from __future__ import annotations
 
 import csv
+import json
 import unicodedata
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from .checker import CheckResult
+from . import __version__
+from .checker import FAILURE_OUTCOMES, CheckResult
 
 CSV_FIELDS = [
     "url",
@@ -85,13 +88,63 @@ def write_csv(results: list[CheckResult], output: str) -> None:
             writer.writerow(_csv_row(result))
 
 
-def print_report(results: list[CheckResult]) -> None:
-    """Print a compact report and summary."""
+def summarize(results: list[CheckResult]) -> dict[str, int]:
+    """Count results per outcome, in a stable (alphabetical) order."""
+    counts: dict[str, int] = {}
+    for result in results:
+        counts[result.outcome] = counts.get(result.outcome, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def write_json(
+    results: list[CheckResult], output: str, *, elapsed_s: float | None = None
+) -> None:
+    """Write results and a summary to a UTF-8 JSON file, overwriting it."""
+    path = Path(output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for result in results:
+        row = result.to_dict()
+        row["url"] = redact_url(result.url)
+        row["final_url"] = redact_url(result.final_url)
+        rows.append(row)
+    document = {
+        "tool": "linkcheck",
+        "version": __version__,
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "elapsed_seconds": None if elapsed_s is None else round(elapsed_s, 3),
+        "summary": {
+            "total": len(results),
+            "problems": sum(r.outcome in FAILURE_OUTCOMES for r in results),
+            "outcomes": summarize(results),
+        },
+        "results": rows,
+    }
+    with path.open("w", encoding="utf-8", newline="\n") as file:
+        json.dump(document, file, ensure_ascii=False, indent=2)
+        file.write("\n")
+
+
+def print_report(
+    results: list[CheckResult],
+    *,
+    quiet: bool = False,
+    elapsed_s: float | None = None,
+) -> None:
+    """Print a compact report and summary.
+
+    With ``quiet`` the rows for OK results are left out (the summary still
+    counts them).
+    """
     print()
     print(f"{'RESULT':<14} {'HTTP':>5} {'TIME':>8} {'REDIR':>5}  URL")
     print("-" * 100)
 
+    hidden = 0
     for result in results:
+        if quiet and result.outcome == "OK":
+            hidden += 1
+            continue
         url = display_url(result.url)
         final_url = display_url(result.final_url)
         status = str(result.status_code) if result.status_code is not None else "-"
@@ -104,14 +157,15 @@ def print_report(results: list[CheckResult]) -> None:
             print(f"    Detail: {visible(result.error)}")
         elif final_url and final_url != url:
             print(f"    Final URL: {final_url}")
+    if hidden:
+        print(f"({hidden} OK result(s) not shown because of --quiet)")
 
-    counts: dict[str, int] = {}
-    for result in results:
-        counts[result.outcome] = counts.get(result.outcome, 0) + 1
-
+    counts = summarize(results)
     print("-" * 100)
     print(f"Total: {len(results)} URL(s)")
-    for outcome, count in sorted(counts.items()):
+    for outcome, count in counts.items():
         print(f"  {outcome}: {count}")
     if counts.get("RESTRICTED"):
         print("Note: RESTRICTED results do not affect the exit code.")
+    if elapsed_s is not None:
+        print(f"Finished in {elapsed_s:.1f}s")

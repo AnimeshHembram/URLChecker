@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Read URLs from standard input with `linkcheck check -`.
+- `--json PATH` writes a JSON report with a summary block.
+- `--quiet` / `-q` lists only results that are not OK.
+- A URL that appears several times is requested once; every line still gets
+  its own result row.
+- The summary ends with the total run time.
+
 ### Fixed
 - Repository links now point to `AnimeshHembram/URLChecker`.
 - Invisible control characters in URL lines (NUL, zero-width space, tabs) are

@@ -15,6 +15,7 @@ from linkcheck.checker import (
     check_urls,
     classify_status,
     load_urls,
+    parse_url_lines,
 )
 
 
@@ -336,3 +337,19 @@ def test_load_urls_strips_whitespace_and_crlf(tmp_path):
     source = tmp_path / "urls.txt"
     source.write_bytes(b"  https://a.test/  \r\n\t# tab comment\r\n")
     assert load_urls(str(source)) == ["https://a.test/"]
+
+
+def test_parse_url_lines_bom_only_on_first_line():
+    assert parse_url_lines(["\ufeffhttps://a.test/", "\ufeffhttps://b.test/"]) == [
+        "https://a.test/",
+        "\ufeffhttps://b.test/",
+    ]
+
+
+def test_duplicate_results_are_independent_copies():
+    results = check_urls(
+        ["https://a.test/", " https://a.test/ "], transport=respond(200)
+    )
+    assert [r.url for r in results] == ["https://a.test/", "https://a.test/"]
+    assert results[0] == results[1]
+    assert results[0] is not results[1]

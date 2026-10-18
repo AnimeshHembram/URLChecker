@@ -7,6 +7,7 @@ import os
 import sys
 import traceback
 from pathlib import Path
+from time import perf_counter
 
 import httpx
 
@@ -17,16 +18,19 @@ from .checker import (
     WORKERS_MESSAGE,
     check_urls,
     load_urls,
+    parse_url_lines,
     validate_timeout,
     validate_workers,
 )
-from .reporter import print_report, write_csv
+from .reporter import print_report, write_csv, write_json
 
 EXIT_OK = 0
 EXIT_PROBLEMS = 1
 EXIT_USAGE = 2
 EXIT_INTERNAL = 3
 EXIT_INTERRUPTED = 130
+
+STDIN = "-"
 
 
 def _timeout_arg(value: str) -> float:
@@ -61,13 +65,29 @@ def build_parser() -> argparse.ArgumentParser:
         "check",
         help="Check URLs from a text file",
         description=(
-            "Check every URL line in FILE. Blank lines and lines starting "
-            "with # are ignored."
+            "Check every URL line in FILE (use - to read from standard input). "
+            "Blank lines and lines starting with # are ignored."
         ),
     )
-    check.add_argument("file", help="Text file containing one URL per line")
     check.add_argument(
-        "--output", "-o", help="Write a CSV report to this path (overwritten)"
+        "file", help="Text file with one URL per line, or - for standard input"
+    )
+    check.add_argument(
+        "--output",
+        "-o",
+        metavar="CSV",
+        help="Write a CSV report to this path (overwritten)",
+    )
+    check.add_argument(
+        "--json",
+        metavar="PATH",
+        help="Write a JSON report to this path (overwritten)",
+    )
+    check.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Only list results that are not OK (the summary still counts all)",
     )
     check.add_argument(
         "--timeout",
@@ -100,37 +120,63 @@ def _make_console_safe() -> None:
                 pass
 
 
+def _read_urls(source: str) -> list[str] | None:
+    """Return the URL lines, or ``None`` after printing an input error."""
+    if source == STDIN:
+        try:
+            return parse_url_lines(sys.stdin)
+        except UnicodeError as exc:
+            print(f"Error reading standard input: {exc}", file=sys.stderr)
+            return None
+
+    input_path = Path(source)
+    if not input_path.is_file():
+        print(f"Error: input file not found: {input_path}", file=sys.stderr)
+        return None
+    try:
+        return load_urls(str(input_path))
+    except (OSError, UnicodeError) as exc:
+        print(f"Error reading input file: {exc}", file=sys.stderr)
+        return None
+
+
 def _run(argv: list[str] | None, transport: httpx.BaseTransport | None) -> int:
     args = build_parser().parse_args(argv)
 
-    input_path = Path(args.file)
-    if not input_path.is_file():
-        print(f"Error: input file not found: {input_path}", file=sys.stderr)
+    urls = _read_urls(args.file)
+    if urls is None:
         return EXIT_USAGE
-
-    try:
-        urls = load_urls(str(input_path))
-    except (OSError, UnicodeError) as exc:
-        print(f"Error reading input file: {exc}", file=sys.stderr)
-        return EXIT_USAGE
-
     if not urls:
-        print("No URLs found in the input file.")
+        print("No URLs found in the input.")
         return EXIT_OK
 
-    print(f"LinkCheck: checking {len(urls)} URL(s)...")
+    unique = len(set(urls))
+    extra = f" ({unique} unique)" if unique != len(urls) else ""
+    print(f"LinkCheck: checking {len(urls)} URL(s){extra}...")
+    started = perf_counter()
     results = check_urls(
         urls, timeout=args.timeout, workers=args.workers, transport=transport
     )
-    print_report(results)
+    elapsed_s = perf_counter() - started
+    print_report(results, quiet=args.quiet, elapsed_s=elapsed_s)
 
-    if args.output:
+    writers = [
+        ("CSV", args.output, lambda path: write_csv(results, path)),
+        (
+            "JSON",
+            args.json,
+            lambda path: write_json(results, path, elapsed_s=elapsed_s),
+        ),
+    ]
+    for label, path, write in writers:
+        if not path:
+            continue
         try:
-            write_csv(results, args.output)
+            write(path)
         except OSError as exc:
-            print(f"Error writing CSV report: {exc}", file=sys.stderr)
+            print(f"Error writing {label} report: {exc}", file=sys.stderr)
             return EXIT_USAGE
-        print(f"\nCSV report saved to: {args.output}")
+        print(f"{label} report saved to: {path}")
 
     if any(result.outcome in FAILURE_OUTCOMES for result in results):
         return EXIT_PROBLEMS

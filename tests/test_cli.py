@@ -1,6 +1,7 @@
 """Command-line behaviour and exit codes."""
 
 import io
+import json
 import subprocess
 import sys
 
@@ -122,7 +123,7 @@ def test_invalid_utf8(url_file, capsys):
 
 def test_empty_file(url_file, capsys):
     assert run(["check", url_file("# only a comment", "")]) == 0
-    assert "No URLs found in the input file." in capsys.readouterr().out
+    assert "No URLs found in the input." in capsys.readouterr().out
 
 
 def test_csv_to_nested_folder(url_file, tmp_path, capsys):
@@ -179,7 +180,7 @@ def test_ac24_rows(url_file, tmp_path, capsys):
 
 
 def test_internal_error(url_file, monkeypatch, capsys):
-    def broken(results):
+    def broken(results, **kwargs):
         raise RuntimeError("kaboom")
 
     monkeypatch.setattr(cli, "print_report", broken)
@@ -192,7 +193,7 @@ def test_internal_error(url_file, monkeypatch, capsys):
 
 
 def test_internal_error_debug_traceback(url_file, monkeypatch, capsys):
-    def broken(results):
+    def broken(results, **kwargs):
         raise RuntimeError("kaboom")
 
     monkeypatch.setattr(cli, "print_report", broken)
@@ -229,3 +230,96 @@ def test_python_dash_m_version():
     )
     assert completed.returncode == 0
     assert completed.stdout.strip() == f"linkcheck {__version__}"
+
+
+# --- round 2: stdin, JSON, quiet, duplicates -------------------------------
+
+
+def test_read_from_stdin(monkeypatch, capsys):
+    stdin = io.StringIO("\ufeff# list\nhttps://a.test/x\n\nhttps://a.test/bad\n")
+    monkeypatch.setattr(sys, "stdin", stdin)
+    assert run(["check", "-"], {"/bad": 404}) == 1
+    out = capsys.readouterr().out
+    assert "checking 2 URL(s)..." in out
+    assert "BROKEN" in out
+
+
+def test_stdin_decode_error(monkeypatch, capsys):
+    stdin = io.TextIOWrapper(io.BytesIO(b"\xff\xfe\x00bad"), encoding="utf-8")
+    monkeypatch.setattr(sys, "stdin", stdin)
+    assert run(["check", "-"]) == 2
+    assert "Error reading standard input" in capsys.readouterr().err
+
+
+def test_empty_stdin(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert run(["check", "-"]) == 0
+    assert "No URLs found in the input." in capsys.readouterr().out
+
+
+def test_json_report(url_file, tmp_path, capsys):
+    output = tmp_path / "out" / "report.json"
+    path = url_file("https://u:pw@a.test/ok", "https://a.test/gone", "ftp://x")
+    assert run(["check", path, "--json", str(output)], {"/gone": 404}) == 1
+    assert f"JSON report saved to: {output}" in capsys.readouterr().out
+    raw = output.read_text(encoding="utf-8")
+    assert not raw.startswith("\ufeff")
+    data = json.loads(raw)
+    assert data["tool"] == "linkcheck"
+    assert data["version"] == __version__
+    assert data["generated_at"].endswith("+00:00")
+    assert isinstance(data["elapsed_seconds"], float)
+    assert data["summary"] == {
+        "total": 3,
+        "problems": 2,
+        "outcomes": {"BROKEN": 1, "INVALID": 1, "OK": 1},
+    }
+    assert [r["outcome"] for r in data["results"]] == ["OK", "BROKEN", "INVALID"]
+    assert data["results"][0]["url"] == "https://***@a.test/ok"
+    assert "pw" not in raw
+    assert data["results"][2]["status_code"] is None
+
+
+def test_csv_and_json_together(url_file, tmp_path):
+    csv_path, json_path = tmp_path / "r.csv", tmp_path / "r.json"
+    path = url_file("https://a.test/")
+    assert run(["check", path, "-o", str(csv_path), "--json", str(json_path)]) == 0
+    assert csv_path.is_file() and json_path.is_file()
+
+
+def test_json_to_directory(url_file, tmp_path, capsys):
+    target = tmp_path / "dir"
+    target.mkdir()
+    assert run(["check", url_file("https://a.test/"), "--json", str(target)]) == 2
+    assert "Error writing JSON report" in capsys.readouterr().err
+
+
+def test_quiet_hides_ok_rows(url_file, capsys):
+    path = url_file("https://a.test/fine", "https://a.test/gone")
+    assert run(["check", path, "--quiet"], {"/gone": 404}) == 1
+    out = capsys.readouterr().out
+    assert "https://a.test/fine" not in out
+    assert "https://a.test/gone" in out
+    assert "(1 OK result(s) not shown because of --quiet)" in out
+    assert "  OK: 1" in out
+
+
+def test_duplicates_checked_once(url_file, capsys):
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, request=request)
+
+    path = url_file("https://a.test/x", "https://a.test/y", "https://a.test/x")
+    code = cli.main(["check", path], transport=httpx.MockTransport(handler))
+    assert code == 0
+    assert sorted(calls) == ["https://a.test/x", "https://a.test/y"]
+    out = capsys.readouterr().out
+    assert "checking 3 URL(s) (2 unique)..." in out
+    assert "Total: 3 URL(s)" in out
+
+
+def test_finished_line(url_file, capsys):
+    assert run(["check", url_file("https://a.test/")]) == 0
+    assert "Finished in " in capsys.readouterr().out
