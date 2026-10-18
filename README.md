@@ -1,7 +1,7 @@
 # LinkCheck CLI
 
 [![CI](https://github.com/AnimeshHembram/URLChecker/actions/workflows/ci.yml/badge.svg)](https://github.com/AnimeshHembram/URLChecker/actions/workflows/ci.yml)
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
+![Python 3.12 | 3.13](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 A free, local-first command-line tool that checks a list of HTTP/HTTPS URLs,
@@ -35,7 +35,7 @@ CSV report saved to: report.csv
 
 ## Requirements
 
-- Python 3.12 or newer
+- Python 3.12 or newer (tested on 3.12 and 3.13)
 - Internet access for real checks
 
 ## Installation
@@ -102,9 +102,19 @@ times is requested only once, and each of its lines gets the same result. There 
 `INVALID` because it contains a space. A `#` with no space before it is a normal
 URL fragment (`https://example.com/#section`).
 
-The file must be UTF-8 (a byte-order mark is fine). An example list is in
-[`examples/urls.txt`](examples/urls.txt). Note that it contacts real third-party
-sites (example.com, python.org, httpbin.org).
+The file (or piped input) must be UTF-8; a byte-order mark is fine. In the old
+Windows PowerShell 5.1, piping non-English URLs needs
+`$OutputEncoding = [Text.UTF8Encoding]::new()` first; PowerShell 7 already sends
+UTF-8.
+
+Two example lists are included. Both contact real third-party sites:
+
+- [`examples/urls.txt`](examples/urls.txt): a quick four-URL smoke test.
+- [`examples/edge-cases.txt`](examples/edge-cases.txt): about 30 real URLs, at
+  least one for every outcome (redirects, 404/410, 401/403/429, 5xx, expired and
+  self-signed TLS certificates, DNS failure, redirect loop, timeout, invalid
+  lines), each labelled with the expected result. Run it with
+  `linkcheck check examples/edge-cases.txt --timeout 5`.
 
 ## Options
 
@@ -131,7 +141,7 @@ output is redirected to a file or pipe.
 | `RESTRICTED` | The final response is **401, 403 or 429**. The page probably exists but needs a login, blocks automated requests, or is rate limiting. |
 | `BROKEN` | The final response is any other 4xx, such as 404 or 410. |
 | `SERVER_ERROR` | The final response is 5xx. |
-| `ERROR` | The check could not finish: timeout, DNS lookup failure, TLS/certificate problem, refused connection, more than 10 redirects, a redirect to a non-HTTP address, a redirect without a usable `Location` header, or an unexpected status code. The `error` column says which. |
+| `ERROR` | The check could not finish: timeout, DNS lookup failure, TLS/certificate problem, refused connection, proxy failure, more than 10 redirects, a redirect to a non-HTTP address, a redirect without a usable `Location` header, or an unexpected status code. The `error` column says which. |
 | `INVALID` | The line is not a checkable URL, so no request was made: unsupported or missing scheme (only `http` and `https`), missing host, invalid port, invalid host name, or spaces/control characters. |
 
 LinkCheck reads only the status line and headers. It never downloads page
@@ -182,7 +192,7 @@ characters correctly. For safety:
 ```json
 {
   "tool": "linkcheck",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "generated_at": "2026-10-18T15:30:00+00:00",
   "elapsed_seconds": 2.412,
   "summary": {"total": 4, "problems": 1, "outcomes": {"BROKEN": 1, "OK": 3}},
@@ -220,7 +230,8 @@ results that make the exit code 1.
 
 - No crawling, sitemap parsing or link extraction from pages.
 - Page content is not inspected, so a page that says "not found" but returns
-  HTTP 200 (a "soft 404") is reported as `OK`.
+  HTTP 200 (a "soft 404") is reported as `OK`. For example, PyPI answers unknown
+  project pages with 200.
 - Some servers block automated requests, which can show up as `RESTRICTED` or
   `ERROR` even though the page works in a browser.
 - Retries are off by default (`--retries`), and there is no per-site rate

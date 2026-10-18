@@ -258,6 +258,9 @@ def check_url(
     except httpx.TimeoutException as exc:
         error = f"Timed out after {timeout:g}s ({_timeout_phase(exc)})"
         final_url, redirect_count = "", 0
+    except httpx.ProxyError:
+        error = "Proxy connection failed (check the HTTP_PROXY / HTTPS_PROXY settings)"
+        final_url, redirect_count = "", 0
     except httpx.ConnectError as exc:
         error = _connect_error_message(exc)
         final_url, redirect_count = "", 0

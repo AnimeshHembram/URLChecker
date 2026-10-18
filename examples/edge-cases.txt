@@ -1,0 +1,56 @@
+# LinkCheck live test list: one or more real URLs for every outcome.
+# Run:  linkcheck check examples/edge-cases.txt --timeout 5 -o reports/edge.csv --json reports/edge.json
+# Each comment says what the following lines should produce. Real websites can
+# change, so a result that differs is worth a look, not automatically a bug.
+
+# --- Expected: OK ---
+https://www.python.org/
+https://github.com/AnimeshHembram/URLChecker
+https://pypi.org/project/httpx/
+
+# --- Expected: OK, after following redirects (redirect count > 0) ---
+http://python.org/
+http://github.com/
+https://httpbin.org/redirect/3
+
+# --- Expected: BROKEN (404 / 410) ---
+https://github.com/AnimeshHembram/this-repo-does-not-exist-123
+https://pypi.org/pypi/this-package-does-not-exist-xyz-123/json
+https://httpbin.org/status/410
+
+# --- Known limitation: a "soft 404". PyPI answers unknown project pages with
+# HTTP 200 (a check page), so this is reported OK although the project is missing.
+https://pypi.org/project/this-package-does-not-exist-xyz-123/
+
+# --- Expected: RESTRICTED (401 / 403 / 429) ---
+https://httpbin.org/status/401
+https://httpbin.org/status/403
+https://httpbin.org/status/429
+
+# --- Expected: SERVER_ERROR (5xx) ---
+https://httpbin.org/status/500
+https://httpbin.org/status/503
+
+# --- Expected: ERROR, TLS certificate problems ---
+https://expired.badssl.com/
+https://self-signed.badssl.com/
+https://wrong.host.badssl.com/
+
+# --- Expected: ERROR, DNS lookup failed (.invalid names never resolve) ---
+https://no-such-host.invalid/
+
+# --- Expected: ERROR, too many redirects (11 hops, the limit is 10) ---
+https://httpbin.org/redirect/11
+
+# --- Expected: ERROR, timed out (the server waits 10 s; use --timeout 5) ---
+https://httpbin.org/delay/10
+
+# --- Expected: INVALID (no request is made) ---
+ftp://ftp.example.com/file.txt
+mailto:someone@example.com
+https://example.com/page with space
+www.example.com
+https://example.com:99999/
+
+# --- Expected: same result as the first line; checked only once ---
+https://www.python.org/

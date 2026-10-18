@@ -465,3 +465,11 @@ def test_progress_callback_counts_unique_urls():
         urls, transport=respond(200), on_progress=lambda d, t: calls.append((d, t))
     )
     assert calls == [(1, 2), (2, 2)]
+
+
+def test_proxy_error_message():
+    transport = raising(lambda request: httpx.ProxyError("407", request=request))
+    result = check_url("https://example.com/", transport=transport)
+    assert result.outcome == "ERROR"
+    assert result.error.startswith("Proxy connection failed")
+    assert checker.is_retryable(result) is False

@@ -385,3 +385,24 @@ def test_attempts_in_json_not_csv(url_file, tmp_path):
     assert (
         json.loads(json_path.read_text(encoding="utf-8"))["results"][0]["attempts"] == 1
     )
+
+
+def test_stdin_is_read_as_utf8(monkeypatch, capsys):
+    # Simulate a Windows pipe: UTF-8 bytes behind a cp1252 text wrapper.
+    raw = io.BytesIO("\ufeffhttps://b\u00fccher.test/\n".encode())
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(raw, encoding="cp1252"))
+    assert run(["check", "-"]) == 0
+    out = capsys.readouterr().out
+    assert "https://b\u00fccher.test/" in out
+    assert "\u00c3" not in out
+
+
+class FakeTTYIn(io.StringIO):
+    def isatty(self):
+        return True
+
+
+def test_stdin_tty_hint(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "stdin", FakeTTYIn("https://a.test/\n"))
+    assert run(["check", "-"]) == 0
+    assert "Reading URLs from standard input" in capsys.readouterr().err

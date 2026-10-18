@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-18
+
+### Fixed
+- Piped input (`linkcheck check -`) is read as UTF-8 on Windows, so non-English
+  host names are no longer garbled.
+- JSON reports written to `reports/` are ignored by Git like CSV reports.
+
+### Added
+- `examples/edge-cases.txt`: a labelled live-test list with a real URL for every
+  outcome.
+- A hint is printed when `linkcheck check -` waits for typed input.
+- Proxy failures are reported as "Proxy connection failed" with a hint.
+- CI also runs on Python 3.13.
+
 ## [0.2.0] - 2026-10-18
 
 ### Added
@@ -55,6 +69,7 @@ First public release.
   no longer crashes the whole run.
 - `--timeout nan` and `--timeout inf` are rejected instead of mislabelling or crashing.
 
-[Unreleased]: https://github.com/AnimeshHembram/URLChecker/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/AnimeshHembram/URLChecker/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/AnimeshHembram/URLChecker/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/AnimeshHembram/URLChecker/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AnimeshHembram/URLChecker/releases/tag/v0.1.0

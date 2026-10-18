@@ -162,8 +162,23 @@ class _Progress:
 def _read_urls(source: str) -> list[str] | None:
     """Return the URL lines, or ``None`` after printing an input error."""
     if source == STDIN:
+        stdin = sys.stdin
+        # Piped text is UTF-8 like input files; Windows would otherwise decode
+        # it with the legacy code page and garble non-English host names.
+        reconfigure = getattr(stdin, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8-sig")
+            except (ValueError, OSError):  # pragma: no cover - already read from
+                pass
+        if getattr(stdin, "isatty", lambda: False)():
+            print(
+                "Reading URLs from standard input. Finish with Ctrl+Z then Enter "
+                "(Windows) or Ctrl+D (macOS/Linux).",
+                file=sys.stderr,
+            )
         try:
-            return parse_url_lines(sys.stdin)
+            return parse_url_lines(stdin)
         except UnicodeError as exc:
             print(f"Error reading standard input: {exc}", file=sys.stderr)
             return None
