@@ -4,11 +4,11 @@ import io
 import json
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import httpx
 import pytest
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from linkcheck import __version__, cli
 
@@ -260,7 +260,7 @@ def test_python_dash_m_linkcheck(url_file):
 
     assert completed.returncode == 0
     assert "Total: 1 URL(s)" in completed.stdout
-    
+
 
 # --- round 2: stdin, JSON, quiet, duplicates -------------------------------
 
