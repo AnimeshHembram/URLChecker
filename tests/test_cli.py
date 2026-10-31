@@ -4,6 +4,8 @@ import io
 import json
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import httpx
 import pytest
@@ -221,15 +223,43 @@ def test_console_cannot_encode_unicode(url_file, monkeypatch):
     assert b"b?cher" in stream.buffer.getvalue()
 
 
-def test_python_dash_m_version():
-    completed = subprocess.run(
-        [sys.executable, "-m", "linkcheck", "--version"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+def test_python_dash_m_linkcheck(url_file):
+    class Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self.send_response(200)
+            self.end_headers()
+
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "linkcheck",
+                    "check",
+                    url_file(url),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        finally:
+            server.shutdown()
+            thread.join()
+
     assert completed.returncode == 0
-    assert completed.stdout.strip() == f"linkcheck {__version__}"
+    assert "Total: 1 URL(s)" in completed.stdout
 
 
 # --- round 2: stdin, JSON, quiet, duplicates -------------------------------
